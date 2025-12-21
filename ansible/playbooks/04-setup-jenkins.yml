@@ -1,0 +1,9 @@
+---
+- name: Install Jenkins on EC2 Jenkins Server
+  hosts: jenkins_server
+  become: yes
+  vars:
+    jenkins_port: 8080
+
+  roles:
+    - jenkins

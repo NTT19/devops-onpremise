@@ -1,0 +1,9 @@
+---
+# SQL Server Configuration
+sql_sa_password: "YourStrong@Passw0rd123"  # Override this in inventory or via ansible-vault
+sql_port: 1433
+sql_edition: "Express"  # Express, Developer, Standard, Enterprise
+sql_database_name: "ShoesStore"
+
+# SQL Server connection string for backend
+sql_connection_string: "Server={{ hostvars['sql-server']['ansible_host'] }},{{ sql_port }};Database={{ sql_database_name }};User Id=SA;Password={{ sql_sa_password }};TrustServerCertificate=True;"

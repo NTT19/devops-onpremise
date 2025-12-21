@@ -1,0 +1,11 @@
+﻿
+
+Step 1: Vào SQL, mở file SQL trong project và thực thi nó
+Step 2: Vào file appsetting.json thay đổi đường dẫn connect string
+Step 3: Vào Tools -> Nuget... -> Console rồi dán đoạn này vào thay Admin bằng cái name server của bạn
+	Scaffold-DbContext "Data Source=Admin;Initial Catalog=FINAL;Integrated Security=True;encrypt=false" Microsoft.EntityFrameworkCore.SqlServer -OutputDir Models -Force
+Step 4: Nếu muốn có dữ liệu mẫu thì qua file Program bỏ comment Main.Instance.Insert() và Start project
+
+
+
+

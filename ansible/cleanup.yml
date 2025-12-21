@@ -1,0 +1,154 @@
+---
+# ============================================
+# FULL CLEANUP — Kubernetes + Jenkins
+# ============================================
+
+- name: Full cleanup Kubernetes cluster
+  hosts: all
+  become: yes
+  tasks:
+
+    # -------- Kubernetes Reset --------
+    - name: Reset Kubernetes cluster
+      shell: kubeadm reset -f
+      ignore_errors: yes
+
+    - name: Unhold Kubernetes packages
+      shell: apt-mark unhold kubeadm kubelet kubectl || true
+      ignore_errors: yes
+
+    - name: Remove Kubernetes packages
+      apt:
+        name:
+          - kubeadm
+          - kubelet
+          - kubectl
+          - kubernetes-cni
+        state: absent
+        purge: yes
+        allow_change_held_packages: yes
+      ignore_errors: yes
+
+    - name: Remove Kubernetes directories
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/kubernetes
+        - /var/lib/kubelet
+        - /var/lib/etcd
+        - /etc/cni/net.d
+        - /opt/cni/bin
+        - /var/run/kubernetes
+        - /run/kubelet
+
+    - name: Remove ~/.kube directory
+      file:
+        path: "/home/{{ ansible_user }}/.kube"
+        state: absent
+      ignore_errors: yes
+
+    # -------- Remove container runtime (containerd) --------
+    - name: Stop containerd service
+      service:
+        name: containerd
+        state: stopped
+      ignore_errors: yes
+
+    - name: Remove containerd directories
+      file:
+        state: absent
+        path: "{{ item }}"
+      loop:
+        - /etc/containerd
+        - /var/lib/containerd
+        - /run/containerd
+
+    # -------- Clean CNI Interfaces --------
+    - name: Delete CNI network interfaces
+      shell: |
+        ip link delete cni0 2>/dev/null || true
+        ip link delete flannel.1 2>/dev/null || true
+        ip link delete flannel.4096 2>/dev/null || true
+        ip link delete cali0 2>/dev/null || true
+        ip link delete cali* 2>/dev/null || true
+      ignore_errors: yes
+
+    - name: Clean iptables rules
+      shell: |
+        iptables -F
+        iptables -t nat -F
+        iptables -t mangle -F
+        iptables -X
+      ignore_errors: yes
+
+    - name: APT Autoclean + autoremove
+      apt:
+        autoclean: yes
+        autoremove: yes
+
+# ============================================
+# FULL Cleanup Jenkins
+# ============================================
+
+- name: Full cleanup Jenkins
+  hosts: jenkins
+  become: yes
+  tasks:
+
+    - name: Stop Jenkins service
+      service:
+        name: jenkins
+        state: stopped
+      ignore_errors: yes
+
+    - name: Uninstall Jenkins
+      apt:
+        name: jenkins
+        state: absent
+        purge: yes
+      ignore_errors: yes
+
+    - name: Remove Jenkins directories
+      file:
+        state: absent
+        path: "{{ item }}"
+      loop:
+        - /var/lib/jenkins
+        - /var/log/jenkins
+        - /etc/default/jenkins
+        - /etc/init.d/jenkins
+        - /run/jenkins
+
+    - name: Remove Jenkins repo + key
+      file:
+        state: absent
+        path: "{{ item }}"
+      loop:
+        - /etc/apt/sources.list.d/jenkins.list
+        - /usr/share/keyrings/jenkins-keyring.asc
+
+    - name: Remove Jenkins user & group
+      shell: |
+        userdel -r jenkins 2>/dev/null || true
+        groupdel jenkins 2>/dev/null || true
+      ignore_errors: yes
+
+    # -------- Optional: Remove Java --------
+    - name: Remove Java packages
+      apt:
+        name:
+          - openjdk-17-jre
+          - openjdk-17-jdk
+          - openjdk-11-jre
+          - openjdk-11-jdk
+          - openjdk-8-jre
+          - openjdk-8-jdk
+        state: absent
+        purge: yes
+      ignore_errors: yes
+
+    - name: Clean apt after Jenkins removal
+      apt:
+        autoclean: yes
+        autoremove: yes

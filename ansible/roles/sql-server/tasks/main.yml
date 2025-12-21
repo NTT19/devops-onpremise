@@ -1,0 +1,123 @@
+---
+# =========================================
+# Install SQL Server 2022 on Ubuntu
+# =========================================
+
+- name: Add Microsoft package signing key
+  apt_key:
+    url: https://packages.microsoft.com/keys/microsoft.asc
+    state: present
+
+- name: Add SQL Server repository
+  apt_repository:
+    repo: "deb [arch=amd64,arm64,armhf] https://packages.microsoft.com/ubuntu/18.04/mssql-server-2019 bionic main"
+    state: present
+    filename: mssql-server
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+
+- name: Install SQL Server
+  apt:
+    name: mssql-server
+    state: present
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+# =========================================
+# Configure SQL Server
+# =========================================
+
+- name: Check if SQL Server is configured
+  stat:
+    path: /var/opt/mssql/.system/.configured
+  register: sqlserver_configured
+
+- name: Configure SQL Server (Express Edition with SA password)
+  shell: |
+    MSSQL_SA_PASSWORD='{{ sql_sa_password }}' \
+    MSSQL_PID='Developer' \
+    /opt/mssql/bin/mssql-conf -n setup accept-eula
+  when: not sqlserver_configured.stat.exists
+  no_log: true
+
+- name: Enable and start SQL Server service
+  systemd:
+    name: mssql-server
+    enabled: yes
+    state: started
+
+- name: Wait for SQL Server to be ready
+  wait_for:
+    port: 1433
+    host: 0.0.0.0
+    delay: 5
+    timeout: 60
+
+# =========================================
+# Install SQL Server command-line tools
+# =========================================
+
+- name: Add Microsoft tools repository
+  apt_repository:
+    repo: "deb [arch=amd64] https://packages.microsoft.com/ubuntu/18.04/prod bionic main"
+    state: present
+    filename: mssql-tools
+
+- name: Install SQL Server command-line tools
+  apt:
+    name:
+      - mssql-tools
+      - unixodbc-dev
+    state: present
+  environment:
+    ACCEPT_EULA: Y
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Add sqlcmd to PATH
+  lineinfile:
+    path: /home/vagrant/.bashrc
+    line: 'export PATH="$PATH:/opt/mssql-tools/bin"'
+    create: yes
+
+# =========================================
+# Configure Firewall (if needed)
+# =========================================
+
+- name: Check if ufw is installed
+  command: which ufw
+  register: ufw_check
+  ignore_errors: yes
+  changed_when: false
+
+- name: Allow SQL Server port through firewall
+  ufw:
+    rule: allow
+    port: 1433
+    proto: tcp
+  when: ufw_check.rc == 0
+
+# =========================================
+# Create initial database for application
+# =========================================
+
+- name: Wait for SQL Server to fully initialize
+  pause:
+    seconds: 10
+
+- name: Create ShoesStore database
+  shell: |
+    /opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P '{{ sql_sa_password }}' -Q "
+    IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'ShoesStore')
+    BEGIN
+        CREATE DATABASE ShoesStore;
+    END
+    "
+  register: db_create_result
+  changed_when: "'Database' in db_create_result.stdout"
+  no_log: true
+
+- name: Display SQL Server status
+  debug:
+    msg: "SQL Server installed and running on {{ ansible_host }}:1433"

@@ -1,0 +1,26 @@
+---
+- name: Install SQL Server
+  hosts: sqlserver
+  become: yes
+  gather_facts: yes
+  
+  vars_prompt:
+    - name: sql_sa_password
+      prompt: "Enter SQL Server SA password (minimum 8 characters, uppercase, lowercase, numbers, and special characters)"
+      private: yes
+      confirm: yes
+      default: "Th@nhtai19022004"
+  
+  tasks:
+    - name: Validate password complexity
+      assert:
+        that:
+          - sql_sa_password | length >= 8
+          - sql_sa_password is regex('[A-Z]')
+          - sql_sa_password is regex('[a-z]')
+          - sql_sa_password is regex('[0-9]')
+          - sql_sa_password is regex('[^A-Za-z0-9]')
+        fail_msg: "Password must be at least 8 characters with uppercase, lowercase, numbers, and special characters"
+  
+  roles:
+    - sql-server

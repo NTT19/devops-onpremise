@@ -1,0 +1,37 @@
+---
+- name: Install Kubernetes Cluster
+  hosts: k8s_cluster
+  become: yes
+  gather_facts: yes
+  roles:
+    - k8s-common
+
+- name: Configure Kubernetes Master
+  hosts: masters
+  become: yes
+  gather_facts: yes
+  roles:
+    - k8s-master
+
+- name: Configure Kubernetes Workers
+  hosts: workers
+  become: yes
+  gather_facts: yes
+  roles:
+    - k8s-worker
+
+- name: Install SQL Server
+  hosts: sqlserver
+  become: yes
+  gather_facts: yes
+  vars:
+    sql_sa_password: "YourStrong@Passw0rd123"  # Change this in production!
+  roles:
+    - sql-server
+
+- name: Install Jenkins on EC2
+  hosts: jenkins
+  become: yes
+  gather_facts: yes
+  roles:
+    - jenkins

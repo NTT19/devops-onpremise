@@ -1,0 +1,66 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+
+  config.vm.box = "ubuntu/bionic64"
+
+  # ===== COMMON PROVISION =====
+  config.vm.provision "shell", inline: <<-SHELL
+  set -e
+
+  echo "=== Update system ==="
+  apt-get update -y
+  apt-get upgrade -y
+
+  echo "=== Disable swap (required for Kubernetes) ==="
+  swapoff -a
+  sed -i '/swap/d' /etc/fstab
+
+  echo "=== Install tools ==="
+  apt-get install -y curl wget vim net-tools
+SHELL
+  config.vm.provider "virtualbox" do |vb|
+  vb.customize ["modifyvm", :id, "--uart1", "0x3F8", "4"]
+  vb.customize ["modifyvm", :id, "--uartmode1", "disconnected"]
+end
+
+  # ===== MASTER =====
+  config.vm.define "master" do |master|
+    master.vm.hostname = "master"
+    master.vm.network "private_network", ip: "192.168.56.10"
+
+    master.vm.provider "virtualbox" do |vb|
+      vb.cpus = 2
+      vb.memory = 4096
+
+    end
+  end
+
+  # ===== WORKER 1 =====
+  config.vm.define "worker1" do |worker1|
+    worker1.vm.hostname = "worker1"
+    worker1.vm.network "private_network", ip: "192.168.56.11"
+
+    worker1.vm.provider "virtualbox" do |vb|
+      vb.cpus = 1
+      vb.memory = 2048
+    end
+  end
+
+  # ===== WORKER 2 =====
+  config.vm.define "worker2" do |worker2|
+    worker2.vm.hostname = "worker2"
+    worker2.vm.network "private_network", ip: "192.168.56.12"
+    worker2.vm.provider "virtualbox" do |vb|
+      vb.cpus = 1
+      vb.memory = 2048
+    end
+  end
+
+ # config.vm.synced_folder "../data", "/vagrant_data"
+
+  # Disable default synced folder
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+
+end

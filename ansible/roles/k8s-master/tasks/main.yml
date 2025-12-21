@@ -1,0 +1,224 @@
+---
+# roles/k8s-master/tasks/main.yml
+
+# ----------------------------------------
+# 1) CHECK & INIT MASTER (run once on master)
+# ----------------------------------------
+- name: Check if cluster is already initialized
+  stat:
+    path: /etc/kubernetes/admin.conf
+  register: k8s_admin_conf
+
+- name: Initialize Kubernetes cluster
+  shell: |
+    kubeadm init \
+      --pod-network-cidr={{ pod_network_cidr }} \
+      --service-cidr={{ service_cidr }} \
+      --apiserver-advertise-address={{ hostvars[inventory_hostname].node_ip }}
+  register: kubeadm_init
+  when: not k8s_admin_conf.stat.exists
+  run_once: true
+
+# ----------------------------------------
+# 2) KUBECONFIG for root and vagrant (so interactive kubectl works)
+# ----------------------------------------
+- name: Create .kube directory for root
+  file:
+    path: /root/.kube
+    state: directory
+    mode: '0755'
+
+- name: Copy admin.conf to root's kube config
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /root/.kube/config
+    remote_src: yes
+    owner: root
+    group: root
+    mode: '0644'
+  when: k8s_admin_conf.stat.exists or (kubeadm_init is defined and kubeadm_init is defined)
+
+- name: Create .kube directory for vagrant user
+  file:
+    path: /home/vagrant/.kube
+    state: directory
+    owner: vagrant
+    group: vagrant
+    mode: '0755'
+  run_once: true
+
+- name: Copy admin.conf to vagrant's kube config
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /home/vagrant/.kube/config
+    remote_src: yes
+    owner: vagrant
+    group: vagrant
+    mode: '0644'
+  run_once: true
+
+- name: Export KUBECONFIG for vagrant user
+  lineinfile:
+    path: /home/vagrant/.bashrc
+    line: 'export KUBECONFIG=/home/vagrant/.kube/config'
+    create: yes
+  run_once: true
+
+# ----------------------------------------
+# 3) Generate and save join command (run once)
+# ----------------------------------------
+- name: Get join token (generate join command) on master
+  shell: kubeadm token create --print-join-command
+  register: k8s_join_command
+  when: not k8s_admin_conf.stat.exists
+  run_once: true
+
+- name: Save join command to local controller
+  copy:
+    content: "{{ k8s_join_command.stdout | default('') }}"
+    dest: "./k8s-join-command"
+  delegate_to: localhost
+  become: no
+  when:
+    - k8s_join_command is defined
+    - k8s_join_command.stdout is defined
+  run_once: true
+
+# ----------------------------------------
+# 4) Install CNI (Calico) once from master
+# ----------------------------------------
+- name: Check if Calico is already installed
+  shell: kubectl get deployment calico-kube-controllers -n kube-system
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: calico_exists
+  ignore_errors: yes
+  run_once: true
+
+- name: Download Calico manifest
+  get_url:
+    url: https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+    dest: /tmp/calico.yaml
+  when: calico_exists.rc != 0
+  run_once: true
+
+- name: Update Calico CIDR in manifest
+  replace:
+    path: /tmp/calico.yaml
+    regexp: '192\.168\.0\.0/16'
+    replace: '{{ pod_network_cidr }}'
+  when: calico_exists.rc != 0
+  run_once: true
+
+- name: Install Calico network plugin
+  shell: kubectl apply -f /tmp/calico.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: calico_exists.rc != 0
+  run_once: true
+
+- name: Wait for Calico pods to be ready
+  shell: kubectl get pods -n kube-system -l k8s-app=calico-node --no-headers | grep -v Running | wc -l
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: calico_not_ready
+  until: calico_not_ready.stdout == "0"
+  retries: 30
+  delay: 10
+  run_once: true
+
+- name: Wait for Calico controller to be ready
+  shell: kubectl get pods -n kube-system -l k8s-app=calico-kube-controllers --no-headers | grep -v Running | wc -l
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: calico_controller_not_ready
+  until: calico_controller_not_ready.stdout == "0"
+  retries: 20
+  delay: 10
+  run_once: true
+
+# ----------------------------------------
+# 5) WAIT for workers to join (run once on master)
+# ----------------------------------------
+- name: Wait for worker nodes to be Ready
+  shell: kubectl get nodes --no-headers | grep -v master | grep Ready | wc -l
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: ready_workers
+  until: ready_workers.stdout|int >= {{ groups['workers']|length }}
+  retries: 60
+  delay: 10
+  run_once: true
+
+# ----------------------------------------
+# 6) Label worker nodes (run once)
+# ----------------------------------------
+- name: Label worker nodes
+  shell: kubectl label node {{ hostvars[item]['ansible_hostname'] }} node-role.kubernetes.io/worker=worker --overwrite
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  loop: "{{ groups['workers'] }}"
+  ignore_errors: yes
+  run_once: true
+
+# ----------------------------------------
+# 7) Apply resource quotas (safe to run)
+# ----------------------------------------
+- name: Apply default resource quotas
+  shell: |
+    kubectl create namespace production || true
+    kubectl apply -f - <<EOF
+    apiVersion: v1
+    kind: ResourceQuota
+    metadata:
+      name: compute-quota
+      namespace: production
+    spec:
+      hard:
+        requests.cpu: "1"
+        requests.memory: 1Gi
+        limits.cpu: "2"
+        limits.memory: 2Gi
+    EOF
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  run_once: true
+
+# ----------------------------------------
+# 8) METRICS-SERVER (single, stable install & wait)
+# ----------------------------------------
+- name: Install metrics-server (download and patch to allow insecure kubelet TLS)
+  shell: |
+    set -e
+    tmpf=$(mktemp)
+    curl -fsSL -o "$tmpf" https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
+    # Ensure clean insertion (correct line and correct YAML indentation)
+    sed -i '/--kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname/a\        - --kubelet-insecure-tls' "$tmpf"
+
+    kubectl apply -f "$tmpf"
+    rm -f "$tmpf"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  run_once: true
+
+- name: Wait for metrics-server to be ready
+  shell: kubectl get pods -n kube-system -l k8s-app=metrics-server --no-headers | grep Running | wc -l
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: metrics_server_ready
+  until: metrics_server_ready.stdout|int >= 1
+  retries: 20
+  delay: 10
+  run_once: true
+
+- name: Wait for metrics API to be available
+  shell: kubectl top nodes --request-timeout=30s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: metrics_api_test
+  until: metrics_api_test.rc == 0
+  retries: 6
+  delay: 10
+  ignore_errors: yes
+  run_once: true
