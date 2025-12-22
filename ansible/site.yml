@@ -25,9 +25,16 @@
   become: yes
   gather_facts: yes
   vars:
-    sql_sa_password: "YourStrong@Passw0rd123"  # Change this in production!
+    sql_sa_password: "Th@nhtai19022004"  
   roles:
     - sql-server
+
+- name: Install Docker
+  hosts: masters
+  become: yes
+  gather_facts: yes
+  roles:
+    - docker
 
 - name: Install Jenkins on EC2
   hosts: jenkins

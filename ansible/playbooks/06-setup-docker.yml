@@ -1,0 +1,7 @@
+# create playbooks setup docker for VM 192.168.56.10
+- name: Setup Docker for VM 192.168.56.10
+  hosts: masters
+  become: yes
+  gather_facts: yes
+  roles:
+    - docker

@@ -1,20 +1,23 @@
 ---
 # ============================================
-# FULL CLEANUP — Kubernetes + Jenkins
+# FULL CLEANUP
 # ============================================
-
-- name: Full cleanup Kubernetes cluster
+- name: Cleanup Kubernetes Cluster and Jenkins
   hosts: all
   become: yes
+  gather_facts: yes
   tasks:
+    - name: Display cleanup warning
+      debug:
+        msg: "⚠️  WARNING: This will completely remove Kubernetes and Jenkins installations!"
 
-    # -------- Kubernetes Reset --------
+- name: Reset Kubernetes on all nodes
+  hosts: k8s_cluster
+  become: yes
+  gather_facts: no
+  tasks:
     - name: Reset Kubernetes cluster
       shell: kubeadm reset -f
-      ignore_errors: yes
-
-    - name: Unhold Kubernetes packages
-      shell: apt-mark unhold kubeadm kubelet kubectl || true
       ignore_errors: yes
 
     - name: Remove Kubernetes packages
@@ -23,10 +26,8 @@
           - kubeadm
           - kubelet
           - kubectl
-          - kubernetes-cni
         state: absent
         purge: yes
-        allow_change_held_packages: yes
       ignore_errors: yes
 
     - name: Remove Kubernetes directories
@@ -37,41 +38,19 @@
         - /etc/kubernetes
         - /var/lib/kubelet
         - /var/lib/etcd
-        - /etc/cni/net.d
-        - /opt/cni/bin
-        - /var/run/kubernetes
-        - /run/kubelet
-
-    - name: Remove ~/.kube directory
-      file:
-        path: "/home/{{ ansible_user }}/.kube"
-        state: absent
+        - /etc/cni
+        - /opt/cni
+        - /var/lib/cni
+        - /run/flannel
+        - /etc/systemd/system/kubelet.service.d
+        - ~/.kube
       ignore_errors: yes
 
-    # -------- Remove container runtime (containerd) --------
-    - name: Stop containerd service
-      service:
-        name: containerd
-        state: stopped
-      ignore_errors: yes
-
-    - name: Remove containerd directories
-      file:
-        state: absent
-        path: "{{ item }}"
-      loop:
-        - /etc/containerd
-        - /var/lib/containerd
-        - /run/containerd
-
-    # -------- Clean CNI Interfaces --------
-    - name: Delete CNI network interfaces
+    - name: Remove CNI network interfaces
       shell: |
-        ip link delete cni0 2>/dev/null || true
-        ip link delete flannel.1 2>/dev/null || true
-        ip link delete flannel.4096 2>/dev/null || true
-        ip link delete cali0 2>/dev/null || true
-        ip link delete cali* 2>/dev/null || true
+        ip link delete cni0 || true
+        ip link delete flannel.1 || true
+        ip link delete weave || true
       ignore_errors: yes
 
     - name: Clean iptables rules
@@ -82,27 +61,41 @@
         iptables -X
       ignore_errors: yes
 
-    - name: APT Autoclean + autoremove
+    - name: Remove Docker/containerd
       apt:
-        autoclean: yes
-        autoremove: yes
+        name:
+          - docker.io
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - containerd
+        state: absent
+        purge: yes
+      ignore_errors: yes
 
-# ============================================
-# FULL Cleanup Jenkins
-# ============================================
+    - name: Remove Docker/containerd directories
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/docker
+        - /var/lib/containerd
+        - /etc/docker
+        - /etc/containerd
+      ignore_errors: yes
 
-- name: Full cleanup Jenkins
+- name: Cleanup Jenkins
   hosts: jenkins
   become: yes
+  gather_facts: no
   tasks:
-
     - name: Stop Jenkins service
-      service:
+      systemd:
         name: jenkins
         state: stopped
       ignore_errors: yes
 
-    - name: Uninstall Jenkins
+    - name: Remove Jenkins package
       apt:
         name: jenkins
         state: absent
@@ -111,44 +104,120 @@
 
     - name: Remove Jenkins directories
       file:
-        state: absent
         path: "{{ item }}"
+        state: absent
       loop:
         - /var/lib/jenkins
+        - /var/cache/jenkins
         - /var/log/jenkins
         - /etc/default/jenkins
-        - /etc/init.d/jenkins
-        - /run/jenkins
-
-    - name: Remove Jenkins repo + key
-      file:
-        state: absent
-        path: "{{ item }}"
-      loop:
-        - /etc/apt/sources.list.d/jenkins.list
-        - /usr/share/keyrings/jenkins-keyring.asc
-
-    - name: Remove Jenkins user & group
-      shell: |
-        userdel -r jenkins 2>/dev/null || true
-        groupdel jenkins 2>/dev/null || true
       ignore_errors: yes
 
-    # -------- Optional: Remove Java --------
-    - name: Remove Java packages
+    - name: Remove Java
       apt:
         name:
-          - openjdk-17-jre
-          - openjdk-17-jdk
-          - openjdk-11-jre
-          - openjdk-11-jdk
-          - openjdk-8-jre
-          - openjdk-8-jdk
+          - openjdk-*-jdk
+          - openjdk-*-jre
         state: absent
         purge: yes
       ignore_errors: yes
 
-    - name: Clean apt after Jenkins removal
+    - name: Remove Jenkins repository
+      file:
+        path: /etc/apt/sources.list.d/jenkins.list
+        state: absent
+      ignore_errors: yes
+
+    - name: Remove Jenkins GPG key
+      file:
+        path: /usr/share/keyrings/jenkins-keyring.asc
+        state: absent
+      ignore_errors: yes
+
+- name: Cleanup SQL Server
+  hosts: sqlserver
+  become: yes
+  gather_facts: no
+  tasks:
+    - name: Stop SQL Server service
+      systemd:
+        name: mssql-server
+        state: stopped
+      ignore_errors: yes
+
+    - name: Remove SQL Server packages
+      apt:
+        name:
+          - mssql-server
+          - mssql-tools
+          - unixodbc-dev
+        state: absent
+        purge: yes
+      ignore_errors: yes
+
+    - name: Remove SQL Server directories
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/opt/mssql
+        - /opt/mssql
+        - /opt/mssql-tools
+      ignore_errors: yes
+
+    - name: Remove SQL Server repository
+      file:
+        path: /etc/apt/sources.list.d/mssql-server.list
+        state: absent
+      ignore_errors: yes
+
+- name: Final cleanup on all nodes
+  hosts: all
+  become: yes
+  gather_facts: no
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+      ignore_errors: yes
+
+    - name: Autoremove unused packages
+      apt:
+        autoremove: yes
+        purge: yes
+      ignore_errors: yes
+
+    - name: Clean apt cache
       apt:
         autoclean: yes
-        autoremove: yes
+      ignore_errors: yes
+
+    - name: Reboot nodes (optional)
+      reboot:
+        reboot_timeout: 300
+      when: cleanup_reboot | default(false) | bool
+
+- name: Remove local files
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Remove k8s join command file
+      file:
+        path: "{{ playbook_dir }}/k8s-join-command"
+        state: absent
+      ignore_errors: yes
+
+    - name: Display completion message
+      debug:
+        msg: |
+          ✅ Cleanup completed!
+          
+          All components have been removed:
+          - Kubernetes cluster (all nodes)
+          - Jenkins installation
+          - SQL Server installation
+          - Docker/containerd
+          - Related configurations and data
+          
+          You can now redeploy using: ./deploy.sh
