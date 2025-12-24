@@ -7,15 +7,6 @@ using System.Text;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
-
-// Configure Kestrel to use HTTPS on port 7102
-builder.WebHost.ConfigureKestrel(serverOptions =>
-{
-    serverOptions.ListenAnyIP(7102, listenOptions =>
-    {
-        listenOptions.UseHttps();
-    });
-});
 builder.Services.AddAuthentication().AddJwtBearer(options =>
 {
     options.TokenValidationParameters = new TokenValidationParameters
@@ -48,13 +39,11 @@ builder.Services.AddDbContext<FinalContext>(options =>
 builder.Services.AddCors();
 
 var app = builder.Build();
-
-// Enable Swagger in all environments
-app.UseSwagger();
-app.UseSwaggerUI();
-
-// Health check endpoint
-app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 app.UseHttpsRedirection();
 
