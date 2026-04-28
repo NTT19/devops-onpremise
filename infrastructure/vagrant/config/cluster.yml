@@ -1,0 +1,24 @@
+cluster:
+  box: <%= ENV.fetch("VAGRANT_BOX") %>
+  network_prefix: <%= ENV.fetch("VAGRANT_NETWORK_PREFIX") %>
+
+nodes:
+  - name: master
+    ip_last_octet: <%= ENV.fetch("MASTER_IP_LAST_OCTET") %>
+    cpus: <%= ENV.fetch("MASTER_CPUS") %>
+    memory: <%= ENV.fetch("MASTER_MEMORY") %>
+
+  - name: worker1
+    ip_last_octet: <%= ENV.fetch("WORKER1_IP_LAST_OCTET") %>
+    cpus: <%= ENV.fetch("WORKER1_CPUS") %>
+    memory: <%= ENV.fetch("WORKER1_MEMORY") %>
+
+  - name: worker2
+    ip_last_octet: <%= ENV.fetch("WORKER2_IP_LAST_OCTET") %>
+    cpus: <%= ENV.fetch("WORKER2_CPUS") %>
+    memory: <%= ENV.fetch("WORKER2_MEMORY") %>
+
+  - name: server
+    ip_last_octet: <%= ENV.fetch("SERVER_IP_LAST_OCTET") %>
+    cpus: <%= ENV.fetch("SERVER_CPUS") %>
+    memory: <%= ENV.fetch("SERVER_MEMORY") %>

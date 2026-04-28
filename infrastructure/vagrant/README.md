@@ -1,180 +1,149 @@
-# DevOps On-Premise Infrastructure
+# DevOps On-Premise Infrastructure (Vagrant)
 
-Dự án này sử dụng Vagrant và VirtualBox để tạo môi trường infrastructure on-premise cho việc phát triển và testing.
+This directory contains the local/on-prem infrastructure using Vagrant + VirtualBox to support Kubernetes, Jenkins, and SQL Server on the same VM cluster.
 
-## 📋 Yêu cầu hệ thống
+## System Requirements
 
-- [Vagrant](https://www.vagrantup.com/downloads) >= 2.2.0
-- [VirtualBox](https://www.virtualbox.org/wiki/Downloads) >= 6.1
-- Tối thiểu 8GB RAM (khuyến nghị 16GB)
-- Tối thiểu 50GB dung lượng ổ đĩa trống
+- Vagrant >= 2.2.0
+- VirtualBox >= 6.1
+- Minimum 8GB RAM (16GB recommended)
+- At least 50GB free disk space
 
-## 🏗️ Cấu trúc dự án
+## Standardized Structure
 
 ```
-.
-├── Vagrantfile              # File cấu hình chính
-├── .vagrant/                # Thư mục metadata của Vagrant (tự động tạo)
-│   ├── machines/            # Thông tin các máy ảo
-│   │   ├── master/
-│   │   ├── worker1/
-│   │   └── worker2/
-│   └── bundler/
-└── .vagrant.d/              # Thư mục cấu hình global
-    ├── boxes/               # Box images đã tải
-    └── insecure_private_keys/
+infrastructure/vagrant/
+|-- Vagrantfile             # Entry point that loads config and creates VMs
+|-- config/
+|   `-- cluster.yml         # Centralized config for box, network, CPU, RAM, and nodes
+|   `-- values.env          # Centralized variable values loaded by Vagrantfile
+|-- scripts/
+|   `-- bootstrap.sh        # Shared provisioning for all nodes
+|-- README.md
+`-- .vagrant/               # Local metadata (auto-generated, do not commit)
 ```
 
-## 🚀 Bắt đầu sử dụng
+## Default Topology
 
-### 1. Clone repository
+- Box: `ubuntu/focal64`
+- Network prefix: `192.168.56`
+- Nodes:
+  - `master` - `192.168.56.10` - 2 CPU - 6144 MB RAM
+  - `worker1` - `192.168.56.11` - 1 CPU - 2048 MB RAM
+  - `worker2` - `192.168.56.12` - 1 CPU - 2048 MB RAM
+  - `server` - `192.168.56.13` - 1 CPU - 2048 MB RAM
+
+Node names and IP addresses are kept unchanged for compatibility with the current Ansible inventory.
+
+## Usage
 
 ```bash
-git clone <repository-url>
 cd infrastructure/vagrant
-```
 
-### 2. Khởi động toàn bộ cluster
-
-```bash
-# Khởi động tất cả các máy ảo
+# Create and start all virtual machines
 vagrant up
 
-# Hoặc khởi động từng máy riêng lẻ
+# Start specific nodes
 vagrant up master
 vagrant up worker1
 vagrant up worker2
-```
+vagrant up server
 
-### 3. Truy cập vào máy ảo
-
-```bash
-# SSH vào master node
+# SSH
 vagrant ssh master
-
-# SSH vào worker node
 vagrant ssh worker1
 vagrant ssh worker2
+vagrant ssh server
 ```
 
-## 📦 Box được sử dụng
+## Configuration Customization
 
-Dự án sử dụng **Ubuntu 18.04 LTS (Bionic Beaver)** - box: `ubuntu/bionic64`
+The file `config/cluster.yml` uses variables (ERB syntax), and values are loaded automatically from `config/values.env`.
 
-Chi tiết box:
-- **Version**: 20230607.0.5
-- **Provider**: VirtualBox
-- **Location**: [.vagrant.d/boxes/ubuntu-VAGRANTSLASH-bionic64/20230607.0.5/virtualbox](.vagrant.d/boxes/ubuntu-VAGRANTSLASH-bionic64/20230607.0.5/virtualbox)
+Edit `config/values.env` to customize your environment.
 
-## ⚙️ Cấu hình mặc định
+Required keys in `config/values.env`:
 
-Các máy ảo được cấu hình sẵn với:
+- `VAGRANT_BOX`
+- `VAGRANT_NETWORK_PREFIX`
+- `MASTER_IP_LAST_OCTET`
+- `MASTER_CPUS`
+- `MASTER_MEMORY`
+- `WORKER1_IP_LAST_OCTET`
+- `WORKER1_CPUS`
+- `WORKER1_MEMORY`
+- `WORKER2_IP_LAST_OCTET`
+- `WORKER2_CPUS`
+- `WORKER2_MEMORY`
+- `SERVER_IP_LAST_OCTET`
+- `SERVER_CPUS`
+- `SERVER_MEMORY`
 
-- ✅ Hệ điều hành đã được update
-- ✅ Swap đã bị disable (cần thiết cho Kubernetes)
-- ✅ Công cụ cơ bản: `curl`, `wget`, `vim`, `net-tools`
-- ✅ Serial console logging được cấu hình
+Example `config/values.env`:
 
-## 🔧 Các lệnh Vagrant thường dùng
+```env
+VAGRANT_BOX=ubuntu/focal64
+VAGRANT_NETWORK_PREFIX=192.168.56
 
-### Quản lý máy ảo
+MASTER_IP_LAST_OCTET=10
+MASTER_CPUS=2
+MASTER_MEMORY=6144
+
+WORKER1_IP_LAST_OCTET=11
+WORKER1_CPUS=1
+WORKER1_MEMORY=2048
+
+WORKER2_IP_LAST_OCTET=12
+WORKER2_CPUS=1
+WORKER2_MEMORY=2048
+
+SERVER_IP_LAST_OCTET=13
+SERVER_CPUS=1
+SERVER_MEMORY=2048
+```
+
+Then run:
 
 ```bash
-# Xem trạng thái các máy ảo
-vagrant status
-
-# Xem trạng thái global
-vagrant global-status
-
-# Dừng máy ảo
-vagrant halt [machine-name]
-
-# Khởi động lại
-vagrant reload [machine-name]
-
-# Xóa máy ảo
-vagrant destroy [machine-name]
-
-# Xóa tất cả
-vagrant destroy -f
-```
-
-### Provisioning
-
-```bash
-# Chạy lại provisioning
-vagrant provision [machine-name]
-
-# Reload và provision
-vagrant reload --provision [machine-name]
-```
-
-### SSH
-
-```bash
-# SSH vào máy ảo
-vagrant ssh [machine-name]
-
-# Xem cấu hình SSH
-vagrant ssh-config [machine-name]
-```
-
-## 📝 Tùy chỉnh cấu hình
-
-Để thay đổi cấu hình, chỉnh sửa [Vagrantfile](Vagrantfile):
-
-```ruby
-config.vm.define "master" do |master|
-  master.vm.hostname = "master"
-  master.vm.network "private_network", ip: "192.168.56.10"
-  
-  master.vm.provider "virtualbox" do |vb|
-    vb.memory = "2048"
-    vb.cpus = 2
-  end
-end
-```
-
-## 🐛 Troubleshooting
-
-### Lỗi khởi động máy ảo
-
-```bash
-# Xóa và tạo lại
-vagrant destroy -f
 vagrant up
 ```
 
-### Lỗi network
+To change topology, update `config/values.env` instead of hardcoded values.
+
+You can still adjust `config/cluster.yml` to:
+
+- Change the Ubuntu box
+- Increase/decrease CPU and RAM per node
+- Add new nodes by appending objects in `nodes`
+
+After updating the config:
 
 ```bash
-# Kiểm tra VirtualBox Host-Only Network
-VBoxManage list hostonlyifs
-
-# Xóa cache network
-vagrant reload
+vagrant reload --provision
 ```
 
-### Lỗi box corrupt
+## Useful Commands
 
 ```bash
-# Xóa box và tải lại
-vagrant box remove ubuntu/bionic64
-vagrant box add ubuntu/bionic64
+vagrant status
+vagrant halt <node>
+vagrant destroy -f
+vagrant provision
+vagrant ssh-config <node>
 ```
 
-### Xem logs
+## Troubleshooting
 
 ```bash
-# Console logs
-cat .vagrant/machines/master/virtualbox/ubuntu-bionic-18.04-cloudimg-console.log
+# Recreate the cluster
+vagrant destroy -f
+vagrant up
 
-# Vagrant logs với debug
+# Enable Vagrant debug logs
 VAGRANT_LOG=debug vagrant up
 ```
 
-## 📚 Tài liệu tham khảo
+## Notes
 
-- [Vagrant Documentation](https://www.vagrantup.com/docs)
-- [VirtualBox Documentation](https://www.virtualbox.org/manual/)
-- [Ubuntu Cloud Images](https://cloud-images.ubuntu.com/)
+- Ansible uses Vagrant private keys from `.vagrant/machines/<node>/virtualbox/private_key`.
+- Do not delete the `.vagrant` directory if you still use the current Ansible inventory.

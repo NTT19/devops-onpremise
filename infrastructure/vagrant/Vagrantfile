@@ -1,66 +1,133 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
-Vagrant.configure("2") do |config|
+require "yaml"
+require "erb"
 
-  config.vm.box = "ubuntu/focal64"
+# ==========================================================
+# Paths
+# ==========================================================
+CONFIG_PATH      = File.expand_path("config/cluster.yml", __dir__)
+VALUES_FILE_PATH = File.expand_path("config/values.env", __dir__)
 
-  # ===== COMMON PROVISION =====
-  config.vm.provision "shell", inline: <<-SHELL
-  set -e
+# ==========================================================
+# Load .env file
+# ==========================================================
+def load_env_file(path)
+  return unless File.exist?(path)
 
-  echo "=== Update system ==="
-  apt-get update -y
-  apt-get upgrade -y
+  File.readlines(path, chomp: true).each do |line|
+    line = line.strip
+    next if line.empty? || line.start_with?("#")
 
-  echo "=== Disable swap (required for Kubernetes) ==="
-  swapoff -a
-  sed -i '/swap/d' /etc/fstab
+    key, raw_value = line.split("=", 2)
+    next if key.nil? || raw_value.nil?
 
-  echo "=== Install tools ==="
-  apt-get install -y curl wget vim net-tools
-SHELL
-  config.vm.provider "virtualbox" do |vb|
-  vb.customize ["modifyvm", :id, "--uart1", "0x3F8", "4"]
-  vb.customize ["modifyvm", :id, "--uartmode1", "disconnected"]
+    value = raw_value.strip
+
+    if (value.start_with?('"') && value.end_with?('"')) ||
+       (value.start_with?("'") && value.end_with?("'"))
+      value = value[1..-2]
+    end
+
+    ENV[key.strip] ||= value
+  end
 end
 
-  # ===== MASTER =====
-  config.vm.define "master" do |master|
-    master.vm.hostname = "master"
-    master.vm.network "private_network", ip: "192.168.56.10"
+load_env_file(VALUES_FILE_PATH)
 
-    master.vm.provider "virtualbox" do |vb|
-      vb.cpus = 2
-      vb.memory = 6144
+# ==========================================================
+# Validate files
+# ==========================================================
+raise "Missing file: #{CONFIG_PATH}" unless File.exist?(CONFIG_PATH)
 
-    end
-  end
+unless File.exist?(VALUES_FILE_PATH)
+  raise "Missing file: #{VALUES_FILE_PATH}"
+end
 
-  # ===== WORKER 1 =====
-  config.vm.define "worker1" do |worker1|
-    worker1.vm.hostname = "worker1"
-    worker1.vm.network "private_network", ip: "192.168.56.11"
+# ==========================================================
+# Load YAML + ERB
+# ==========================================================
+yaml_content   = ERB.new(File.read(CONFIG_PATH)).result
+CLUSTER_CONFIG = YAML.safe_load(yaml_content)
 
-    worker1.vm.provider "virtualbox" do |vb|
-      vb.cpus = 1
-      vb.memory = 2048
-    end
-  end
+cluster = CLUSTER_CONFIG.fetch("cluster")
+nodes   = CLUSTER_CONFIG.fetch("nodes")
 
-  # ===== WORKER 2 =====
-  config.vm.define "worker2" do |worker2|
-    worker2.vm.hostname = "worker2"
-    worker2.vm.network "private_network", ip: "192.168.56.12"
-    worker2.vm.provider "virtualbox" do |vb|
-      vb.cpus = 1
-      vb.memory = 2048
-    end
-  end
+# ==========================================================
+# Vagrant Configure
+# ==========================================================
+Vagrant.configure("2") do |config|
 
- # config.vm.synced_folder "../data", "/vagrant_data"
+  config.vm.box = cluster.fetch("box")
 
-  # Disable default synced folder
+  # Disable synced folder
   config.vm.synced_folder ".", "/vagrant", disabled: true
 
+  # --------------------------------------------------------
+  # Common Provision
+  # --------------------------------------------------------
+  config.vm.provision "shell", inline: <<-SHELL
+    set -e
+
+    echo "=== Update system ==="
+    apt-get update -y
+    apt-get upgrade -y
+
+    echo "=== Disable swap ==="
+    swapoff -a || true
+    sed -i '/swap/d' /etc/fstab || true
+
+    echo "=== Install common tools ==="
+    apt-get install -y curl wget vim net-tools unzip gnupg lsb-release ca-certificates
+  SHELL
+
+  # --------------------------------------------------------
+  # Nodes Loop
+  # --------------------------------------------------------
+  nodes.each do |node|
+
+    name          = node.fetch("name")
+    ip_last_octet = Integer(node.fetch("ip_last_octet"))
+    cpus          = Integer(node.fetch("cpus"))
+    memory        = Integer(node.fetch("memory"))
+
+    network_prefix = cluster.fetch("network_prefix")
+    private_ip     = "#{network_prefix}.#{ip_last_octet}"
+
+    config.vm.define name do |machine|
+
+      machine.vm.hostname = name
+
+      # Network
+      # External LAN Access (Bridge)
+      # Change Ethernet -> Wi-Fi if needed
+      machine.vm.network "public_network", ip: private_ip, bridge: "Ethernet"
+
+      # Extra bootstrap script
+      machine.vm.provision "shell", path: "scripts/bootstrap.sh"
+
+      # ==========================================
+      # VirtualBox Provider
+      # ==========================================
+      machine.vm.provider "virtualbox" do |vb|
+        vb.name   = name
+        vb.cpus   = cpus
+        vb.memory = memory
+
+        vb.customize ["modifyvm", :id, "--uart1", "0x3F8", "4"]
+        vb.customize ["modifyvm", :id, "--uartmode1", "disconnected"]
+      end
+
+      # ==========================================
+      # VMware Provider
+      # ==========================================
+      machine.vm.provider "vmware_desktop" do |vmware|
+        vmware.vmx["displayName"] = name
+        vmware.vmx["numvcpus"]    = cpus.to_s
+        vmware.vmx["memsize"]     = memory.to_s
+      end
+
+    end
+  end
 end
