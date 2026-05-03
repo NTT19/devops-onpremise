@@ -1,0 +1,29 @@
+# playbooks/install-sqlserver-tools.yml
+---
+- name: Install SQL Server command-line tools
+  hosts: sqlserver_nodes
+  become: true
+
+  tasks:
+    - name: Add Microsoft tools repository
+      ansible.builtin.apt_repository:
+        repo: "deb https://packages.microsoft.com/ubuntu/{{ ansible_distribution_version }}/prod {{ ansible_distribution_release }} main"
+        state: present
+        filename: mssql-tools
+
+    - name: Install SQL Server tools and ODBC driver
+      ansible.builtin.apt:
+        name:
+          - mssql-tools18
+          - unixodbc-dev
+        state: present
+        update_cache: true
+      environment:
+        ACCEPT_EULA: "Y"
+
+    - name: Add sqlcmd to the system PATH
+      ansible.builtin.copy:
+        dest: /etc/profile.d/mssql-tools.sh
+        content: |
+          export PATH="$PATH:/opt/mssql-tools18/bin"
+        mode: "0644"

@@ -1,0 +1,15 @@
+# tasks/install-sqlserver-rhel.yml
+---
+- name: Add SQL Server repository for RHEL
+  ansible.builtin.yum_repository:
+    name: mssql-server
+    description: "SQL Server {{ mssql_version }}"
+    baseurl: "https://packages.microsoft.com/rhel/{{ ansible_distribution_major_version }}/mssql-server-{{ mssql_version }}/"
+    gpgcheck: true
+    gpgkey: https://packages.microsoft.com/keys/microsoft.asc
+    enabled: true
+
+- name: Install SQL Server on RHEL
+  ansible.builtin.yum:
+    name: mssql-server
+    state: present

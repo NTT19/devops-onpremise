@@ -1,0 +1,46 @@
+# roles/k8s_prereqs/tasks/main.yml
+# Configure prerequisites for all Kubernetes nodes
+
+- name: Disable swap
+  ansible.builtin.command: swapoff -a
+  changed_when: true
+
+- name: Remove swap from fstab
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '.*swap.*'
+    state: absent
+
+- name: Load required kernel modules
+  ansible.builtin.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+
+- name: Persist kernel modules
+  ansible.builtin.copy:
+    content: |
+      overlay
+      br_netfilter
+    dest: /etc/modules-load.d/k8s.conf
+    mode: '0644'
+
+- name: Configure sysctl for Kubernetes networking
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_set: yes
+    state: present
+    reload: yes
+  loop:
+    - { name: net.bridge.bridge-nf-call-iptables, value: '1' }
+    - { name: net.bridge.bridge-nf-call-ip6tables, value: '1' }
+    - { name: net.ipv4.ip_forward, value: '1' }
+
+- name: Install containerd
+  ansible.builtin.include_tasks: install-containerd.yml
+
+- name: Install kubeadm, kubelet, and kubectl
+  ansible.builtin.include_tasks: install-k8s-packages.yml

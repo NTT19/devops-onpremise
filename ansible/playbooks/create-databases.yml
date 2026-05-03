@@ -1,0 +1,109 @@
+---
+- name: Create SQL Server databases and users
+  hosts: sqlserver_nodes
+  become: true
+
+  vars_files:
+    - ../vault/sqlserver-secrets.yml
+
+  vars:
+    mssql_tcp_port: 1433
+
+    mssql_databases:
+      - name: ShoesShop
+        owner: app_user
+      - name: ReportingDB
+        owner: reporting_user
+
+    mssql_users:
+      - name: app_user
+        password: "{{ vault_app_user_password }}"
+        default_db: ShoesShop
+        roles:
+          - db_datareader
+          - db_datawriter
+
+      - name: reporting_user
+        password: "{{ vault_reporting_user_password }}"
+        default_db: ReportingDB
+        roles:
+          - db_datareader
+
+  tasks:
+    # =========================
+    # WAIT FOR SQL SERVER
+    # =========================
+    - name: Wait for SQL Server to be ready
+      ansible.builtin.wait_for:
+        host: localhost
+        port: "{{ mssql_tcp_port }}"
+        delay: 10
+        timeout: 120
+
+    # =========================
+    # CREATE DATABASES
+    # =========================
+    - name: Create databases if not exists
+      ansible.builtin.command: >
+        /opt/mssql-tools18/bin/sqlcmd
+        -S localhost,{{ mssql_tcp_port }}
+        -U SA -P "{{ vault_mssql_sa_password }}"
+        -C
+        -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = '{{ item.name }}')
+            BEGIN
+              CREATE DATABASE [{{ item.name }}];
+            END"
+      loop: "{{ mssql_databases }}"
+      loop_control:
+        label: "{{ item.name }}"
+      changed_when: false
+
+    # =========================
+    # CREATE SQL LOGINS
+    # =========================
+    - name: Create SQL logins if not exists
+      ansible.builtin.command: >
+        /opt/mssql-tools18/bin/sqlcmd
+        -S localhost,{{ mssql_tcp_port }}
+        -U SA -P "{{ vault_mssql_sa_password }}"
+        -C
+        -Q "IF NOT EXISTS (SELECT name FROM sys.sql_logins WHERE name = '{{ item.name }}')
+            BEGIN
+              CREATE LOGIN [{{ item.name }}]
+              WITH PASSWORD = '{{ item.password }}',
+              DEFAULT_DATABASE = [{{ item.default_db }}];
+            END"
+      loop: "{{ mssql_users }}"
+      loop_control:
+        label: "{{ item.name }}"
+      changed_when: false
+      no_log: true
+
+    # =========================
+    # CREATE DB USERS + ROLES
+    # =========================
+    - name: Create database users and assign roles
+      ansible.builtin.command: >
+        /opt/mssql-tools18/bin/sqlcmd
+        -S localhost,{{ mssql_tcp_port }}
+        -U SA -P "{{ vault_mssql_sa_password }}"
+        -C
+        -d {{ item.default_db }}
+        -Q "
+        IF NOT EXISTS (
+            SELECT name FROM sys.database_principals
+            WHERE name = '{{ item.name }}'
+        )
+        BEGIN
+            CREATE USER [{{ item.name }}]
+            FOR LOGIN [{{ item.name }}];
+        END;
+        {% for role in item.roles %}
+        ALTER ROLE [{{ role }}] ADD MEMBER [{{ item.name }}];
+        {% endfor %}
+        "
+      loop: "{{ mssql_users }}"
+      loop_control:
+        label: "{{ item.name }}"
+      changed_when: false
+      no_log: true

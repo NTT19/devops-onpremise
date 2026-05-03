@@ -1,0 +1,26 @@
+# playbooks/backup-sqlserver.yml
+---
+- name: Backup SQL Server databases
+  hosts: sqlserver_nodes
+  become: true
+  vars_files:
+    - ../vault/sqlserver-secrets.yml
+  vars:
+    timestamp: "{{ ansible_date_time.date }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}"
+
+  tasks:
+    - name: Create full backup of each database
+      ansible.builtin.command:
+        cmd: >
+          /opt/mssql-tools18/bin/sqlcmd
+          -S localhost,{{ mssql_tcp_port }}
+          -U SA -P "{{ vault_mssql_sa_password }}"
+          -C
+          -Q "BACKUP DATABASE [{{ item.name }}]
+              TO DISK = '{{ mssql_backup_dir }}/{{ item.name }}_{{ timestamp }}.bak'
+              WITH COMPRESSION, CHECKSUM, STATS = 10;"
+      loop: "{{ mssql_databases }}"
+      loop_control:
+        label: "{{ item.name }}"
+      changed_when: true
+      no_log: true

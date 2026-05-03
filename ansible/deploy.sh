@@ -1,41 +1,88 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
-echo "🚀 Starting Kubernetes cluster deployment..."
-
-# Check if Ansible is installed
-if ! command -v ansible &> /dev/null; then
-    echo "❌ Ansible is not installed. Please install it first:"
-    echo "   sudo apt update && sudo apt install ansible -y"
-    exit 1
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/site.yml" && -d "$SCRIPT_DIR/inventory" ]]; then
+  ANSIBLE_DIR="$SCRIPT_DIR"
+else
+  ANSIBLE_DIR="$SCRIPT_DIR/ansible"
 fi
 
-# Test connectivity to all nodes
-echo "🔍 Testing connectivity to all nodes..."
-ansible all -m ping
+INVENTORY="$ANSIBLE_DIR/inventory/production/hosts.yml"
+PLAYBOOK="$ANSIBLE_DIR/site.yml"
+VAULT_FILE="$ANSIBLE_DIR/vault/sqlserver-secrets.yml"
 
-# Run the full deployment
-echo "📦 Running complete Kubernetes installation..."
-ansible-playbook site.yml
+ASK_BECOME=0
 
-echo ""
-echo "✅ Kubernetes cluster deployment completed!"
-echo ""
-echo "🔧 To access your cluster:"
-echo "   ssh username@IP"
-echo "   kubectl get nodes"
-echo ""
-echo "📋 To get the kubeconfig file:"
-echo "   scp username@IP:~/.kube/config ~/.kube/config"
+usage() {
+  cat <<'EOF'
+Usage: ./deploy.sh [options]
 
-echo "🔍 Verifying cluster..."
-ansible masters -m shell -a "kubectl get nodes -o wide"
-echo ""
-echo "✅ Cluster ready! Access with:"
-echo "   ssh username@${CONTROLLER_IP}"
-echo "   kubectl get nodes"
+Options:
+  --ask-become-pass   Prompt for sudo password
+  --help              Show this help
 
-# Jenkins access information
-echo "✅ Jenkins should now be installed on EC2!"
-echo "🔧 Access Jenkins at: http://<JENKINS_EC2_IP>:8080"
+Env:
+  VAULT_PASS_FILE     Path to ansible vault password file
+EOF
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --ask-become-pass) ASK_BECOME=1 ;;
+    --help) usage; exit 0 ;;
+    *)
+      echo "Unknown option: $arg"
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "Missing command: $1"
+    exit 1
+  fi
+}
+
+require_cmd ansible-playbook
+
+if [[ ! -f "$PLAYBOOK" ]]; then
+  echo "Playbook not found: $PLAYBOOK"
+  exit 1
+fi
+
+if [[ ! -f "$INVENTORY" ]]; then
+  echo "Inventory not found: $INVENTORY"
+  exit 1
+fi
+
+if [[ ! -f "$VAULT_FILE" ]]; then
+  echo "Vault file not found: $VAULT_FILE"
+  echo "SQL Server playbooks require this file."
+  exit 1
+fi
+
+if ! head -n 1 "$VAULT_FILE" | grep -q '^\$ANSIBLE_VAULT;'; then
+  echo "Vault file is not encrypted. Run: ansible-vault encrypt $VAULT_FILE"
+  exit 1
+fi
+
+VAULT_OPT=()
+if [[ -n "${VAULT_PASS_FILE:-}" ]]; then
+  VAULT_OPT=(--vault-password-file "$VAULT_PASS_FILE")
+else
+  VAULT_OPT=(--ask-vault-pass)
+fi
+
+BECOME_OPT=()
+if [[ "$ASK_BECOME" -eq 1 ]]; then
+  BECOME_OPT=(--ask-become-pass)
+fi
+
+echo "Running Ansible playbook: $PLAYBOOK"
+ansible-playbook -i "$INVENTORY" "$PLAYBOOK" "${BECOME_OPT[@]}" "${VAULT_OPT[@]}"
+
+echo "Deploy completed."

@@ -1,0 +1,8 @@
+# inventories/production/group_vars/k8s_cluster.yml
+kubernetes_version: "1.29"
+pod_network_cidr: "10.244.0.0/16"
+service_cidr: "10.96.0.0/12"
+cni_plugin: calico
+containerd_version: "1.7"
+cluster_name: prod-k8s
+control_plane_endpoint: "192.168.0.110:6443"

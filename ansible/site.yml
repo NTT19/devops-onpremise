@@ -1,44 +1,26 @@
 ---
-- name: Install Kubernetes Cluster
-  hosts: k8s_cluster
-  become: yes
-  gather_facts: yes
-  roles:
-    - k8s-common
+# Top-level playbook to deploy the full Kubernetes cluster
 
-- name: Configure Kubernetes Master
-  hosts: masters
-  become: yes
-  gather_facts: yes
-  roles:
-    - k8s-master
+- name: Deploy Kubernetes cluster
+  import_playbook: playbooks/kubernetes-cluster.yml
 
-- name: Configure Kubernetes Workers
-  hosts: workers
-  become: yes
-  gather_facts: yes
-  roles:
-    - k8s-worker
+- name: Post-install cluster configuration
+  import_playbook: playbooks/k8s-post-install.yml
+
+- name: Tune SQL Server host
+  import_playbook: playbooks/tune-sqlserver-linux.yml
 
 - name: Install SQL Server
-  hosts: sqlserver
-  become: yes
-  gather_facts: yes
-  vars:
-    sql_sa_password: "Th@nhtai19022004"  
-  roles:
-    - sql-server
+  import_playbook: playbooks/install-sqlserver.yml
 
-- name: Install Docker
-  hosts: masters
-  become: yes
-  gather_facts: yes
-  roles:
-    - docker
+- name: Install SQL Server tools
+  import_playbook: playbooks/install-sqlserver-tools.yml
 
-- name: Install Jenkins on EC2
-  hosts: jenkins
-  become: yes
-  gather_facts: yes
-  roles:
-    - jenkins
+- name: Configure SQL Server
+  import_playbook: playbooks/configure-sqlserver.yml
+
+- name: Create SQL Server databases and users
+  import_playbook: playbooks/create-databases.yml
+
+- name: Verify SQL Server installation
+  import_playbook: playbooks/verify-sqlserver.yml

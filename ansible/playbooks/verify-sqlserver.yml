@@ -1,0 +1,48 @@
+# playbooks/verify-sqlserver.yml
+---
+- name: Verify SQL Server installation
+  hosts: sqlserver_nodes
+  become: true
+  vars_files:
+    - ../vault/sqlserver-secrets.yml
+
+  tasks:
+    - name: Check SQL Server service status
+      ansible.builtin.systemd:
+        name: mssql-server
+      register: mssql_service
+
+    - name: Query SQL Server version
+      ansible.builtin.command:
+        cmd: >
+          /opt/mssql-tools18/bin/sqlcmd
+          -S localhost,{{ mssql_tcp_port }}
+          -U SA -P "{{ vault_mssql_sa_password }}"
+          -C
+          -Q "SELECT @@VERSION AS version;"
+          -h -1
+      register: mssql_version
+      changed_when: false
+      no_log: true
+
+    - name: Display SQL Server status
+      ansible.builtin.debug:
+        msg:
+          - "Service: {{ mssql_service.status.ActiveState }}"
+          - "Version: {{ mssql_version.stdout_lines[0] | default('Unable to query') }}"
+
+    - name: List all databases
+      ansible.builtin.command:
+        cmd: >
+          /opt/mssql-tools18/bin/sqlcmd
+          -S localhost,{{ mssql_tcp_port }}
+          -U SA -P "{{ vault_mssql_sa_password }}"
+          -C
+          -Q "SELECT name, state_desc FROM sys.databases;"
+      register: db_list
+      changed_when: false
+      no_log: true
+
+    - name: Display databases
+      ansible.builtin.debug:
+        msg: "{{ db_list.stdout_lines }}"

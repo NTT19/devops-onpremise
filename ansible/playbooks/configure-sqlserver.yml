@@ -1,0 +1,66 @@
+# playbooks/configure-sqlserver.yml
+---
+- name: Configure SQL Server
+  hosts: sqlserver_nodes
+  become: true
+
+  tasks:
+    - name: Set TCP port
+      ansible.builtin.command:
+        cmd: /opt/mssql/bin/mssql-conf set network.tcpport {{ mssql_tcp_port }}
+      register: port_config
+      changed_when: "'changed' in port_config.stdout"
+      notify: Restart SQL Server
+
+    - name: Set default data directory
+      ansible.builtin.command:
+        cmd: /opt/mssql/bin/mssql-conf set filelocation.defaultdatadir {{ mssql_data_dir }}
+      register: data_config
+      changed_when: true
+      notify: Restart SQL Server
+
+    - name: Set default log directory
+      ansible.builtin.command:
+        cmd: /opt/mssql/bin/mssql-conf set filelocation.defaultlogdir {{ mssql_log_dir }}
+      register: log_config
+      changed_when: true
+      notify: Restart SQL Server
+
+    - name: Set default backup directory
+      ansible.builtin.command:
+        cmd: /opt/mssql/bin/mssql-conf set filelocation.defaultbackupdir {{ mssql_backup_dir }}
+      register: backup_config
+      changed_when: true
+      notify: Restart SQL Server
+
+    - name: Enable SQL Server Agent
+      ansible.builtin.command:
+        cmd: /opt/mssql/bin/mssql-conf set sqlagent.enabled true
+      register: agent_config
+      changed_when: true
+      notify: Restart SQL Server
+
+    - name: Set memory limit (leave 2GB for the OS)
+      ansible.builtin.command:
+        cmd: /opt/mssql/bin/mssql-conf set memory.memorylimitmb {{ mssql_memory_limit_mb | default(4096) }}
+      register: memory_config
+      changed_when: true
+      notify: Restart SQL Server
+
+    - name: Create required directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: mssql
+        group: mssql
+        mode: "0750"
+      loop:
+        - "{{ mssql_data_dir }}"
+        - "{{ mssql_log_dir }}"
+        - "{{ mssql_backup_dir }}"
+
+  handlers:
+    - name: Restart SQL Server
+      ansible.builtin.systemd:
+        name: mssql-server
+        state: restarted

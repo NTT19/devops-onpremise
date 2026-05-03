@@ -1,0 +1,60 @@
+# playbooks/tune-sqlserver-linux.yml
+---
+- name: Apply system tuning for SQL Server on Linux
+  hosts: sqlserver_nodes
+  become: true
+
+  tasks:
+    - name: Set recommended kernel parameters
+      ansible.posix.sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: true
+      loop:
+        - { key: "vm.swappiness", value: "1" }
+        - { key: "vm.dirty_background_ratio", value: "3" }
+        - { key: "vm.dirty_ratio", value: "80" }
+        - { key: "vm.max_map_count", value: "1600000" }
+        - { key: "net.core.rmem_default", value: "262144" }
+        - { key: "net.core.rmem_max", value: "4194304" }
+        - { key: "net.core.wmem_default", value: "262144" }
+        - { key: "net.core.wmem_max", value: "1048576" }
+
+    - name: Disable Transparent Huge Pages
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/disable-thp.service
+        content: |
+          [Unit]
+          Description=Disable Transparent Huge Pages for SQL Server
+          Before=mssql-server.service
+
+          [Service]
+          Type=oneshot
+          ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled'
+          ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/defrag'
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: "0644"
+      notify: Start disable-thp service
+
+    - name: Set mssql user resource limits
+      ansible.builtin.copy:
+        dest: /etc/security/limits.d/mssql.conf
+        content: |
+          mssql soft nofile 65535
+          mssql hard nofile 65535
+          mssql soft nproc 65535
+          mssql hard nproc 65535
+          mssql soft memlock unlimited
+          mssql hard memlock unlimited
+        mode: "0644"
+
+  handlers:
+    - name: Start disable-thp service
+      ansible.builtin.systemd:
+        daemon_reload: true
+        name: disable-thp
+        state: started
+        enabled: true

@@ -1,0 +1,10 @@
+ansible_user: "vagrant"
+mssql_version: "2022"
+mssql_edition: Developer
+mssql_tcp_port: 1433
+mssql_data_dir: /var/opt/mssql/data
+mssql_log_dir: /var/opt/mssql/log
+mssql_backup_dir: /var/opt/mssql/backup
+mssql_databases:
+  - name: ShoesShop
+  - name: ReportingDB

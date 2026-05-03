@@ -1,0 +1,52 @@
+# playbooks/install-sqlserver.yml
+---
+- name: Install SQL Server on Linux
+  hosts: sqlserver_nodes
+  become: true
+  vars_files:
+    - ../vault/sqlserver-secrets.yml
+
+  tasks:
+    - name: Install prerequisite packages
+      ansible.builtin.apt:
+        name:
+          - curl
+          - gnupg
+          - software-properties-common
+        state: present
+        update_cache: true
+
+    - name: Add Microsoft GPG key
+      ansible.builtin.apt_key:
+        url: https://packages.microsoft.com/keys/microsoft.asc
+        state: present
+
+    - name: Add SQL Server repository
+      ansible.builtin.apt_repository:
+        repo: "deb https://packages.microsoft.com/ubuntu/{{ ansible_distribution_version }}/mssql-server-{{ mssql_version }} {{ ansible_distribution_release }} main"
+        state: present
+        filename: mssql-server
+
+    - name: Install SQL Server package
+      ansible.builtin.apt:
+        name: mssql-server
+        state: present
+        update_cache: true
+      register: mssql_install
+
+    - name: Run mssql-conf setup to accept EULA and set SA password
+      ansible.builtin.command:
+        cmd: /opt/mssql/bin/mssql-conf setup
+      environment:
+        ACCEPT_EULA: "Y"
+        MSSQL_SA_PASSWORD: "{{ vault_mssql_sa_password }}"
+        MSSQL_PID: "{{ mssql_edition }}"
+      when: mssql_install.changed
+      changed_when: true
+      no_log: true
+
+    - name: Ensure SQL Server is running
+      ansible.builtin.systemd:
+        name: mssql-server
+        state: started
+        enabled: true
