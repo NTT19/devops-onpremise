@@ -66,7 +66,7 @@ export default function OrderDetail() {
                 <p>Tạo lúc: {converDate(order.createAt)}</p>
             </div>
             <div style={{ height: "40vh", width: "100%" }}>
-                <Table columns={columns} dataSource={rows} />
+                <Table rowKey="id" columns={columns} dataSource={rows} />
             </div>
             <div className="container mt-5">
                 <div className="row ">

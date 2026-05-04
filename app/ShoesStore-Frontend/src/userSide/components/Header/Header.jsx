@@ -62,6 +62,7 @@ const Header = () => {
 
     const handleLogout = () => {
         localStorage.removeItem("user");
+        localStorage.removeItem("token");
         navigate("/home");
         window.location.reload(false);
     };
@@ -77,7 +78,7 @@ const Header = () => {
                         <div className="nav__wrapper">
                             <Link to="/home">
                                 <div className="logo">
-                                        
+
                                     <div>
                                         <h1>Cửa hàng</h1>
                                     </div>
@@ -143,7 +144,14 @@ const Header = () => {
                                                 </span>
                                             </DropdownToggle>
                                             <DropdownMenu
-                                                style={{ marginTop: "20px" }}
+                                                modifiers={[
+                                                    {
+                                                        name: "offset",
+                                                        options: {
+                                                            offset: [0, 20],
+                                                        },
+                                                    },
+                                                ]}
                                                 className="drop__menu"
                                             >
                                                 {user ? (

@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Leverage caching by installing dependencies first
 COPY package.json package-lock.json ./
-RUN npm install --frozen-lockfile
+RUN npm ci
 
 # Copy the rest of the application code and build for production
 COPY . ./
@@ -16,7 +16,7 @@ WORKDIR /app
 
 # Install dependencies again for development
 COPY package.json package-lock.json ./
-RUN npm install --frozen-lockfile
+RUN npm ci
 
 # Copy the full source code
 COPY . ./

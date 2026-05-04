@@ -6,11 +6,16 @@ const Order = () => {
     const navigate = useNavigate();
     const [order, setOrder] = useState([]);
     const user = JSON.parse(localStorage.getItem("user"));
-    if (user === undefined) {
-        navigate("/login");
-    }
+
     useEffect(() => {
+        if (!user) {
+            navigate("/login");
+            return;
+        }
+
         const id = user?.id;
+        if (!id) return;
+
         const result = async () => {
             const data = await getAllOrderAnUserService(id);
             if (data.data?.status === 200) {
@@ -18,11 +23,11 @@ const Order = () => {
             }
         };
         result();
-    }, []);
+    }, [navigate, user]);
     return (
         <div>
             <h2
-                
+
                 className="order_h2"
             >
                 Danh sách lịch sử mua hàng

@@ -1,12 +1,13 @@
+import requestApi from "./utils/requestApi";
 import axios from "axios";
 const slugs = ['cham-soc-suc-khoe', 'duoc-pham', 'thuc-pham-chuc-nang', 'cham-soc-sac-dep'];
 
 const headers = {
-        'Content-Type': 'application/json',
-    }
+    'Content-Type': 'application/json',
+}
 export const AddCategory = async (category, products) => {
     try {
-        const response = await axios.post('https://localhost:7102/api/category/add', JSON.stringify(category), { headers });
+        const response = await requestApi.post('/category/add', JSON.stringify(category), { headers });
         const result = response.data;
         console.log(result.message);
         if (result.status === 400) {
@@ -23,7 +24,7 @@ export const AddCategory = async (category, products) => {
             })
         )
         return {
-            status:message
+            status: message
         };
     } catch (error) {
         console.error(error);
@@ -31,7 +32,7 @@ export const AddCategory = async (category, products) => {
 }
 export const AddProduct = async product => {
     try {
-        const response = await axios.post('https://localhost:7102/api/product/add', JSON.stringify(product), {headers});
+        const response = await requestApi.post('/product/add', JSON.stringify(product), { headers });
         const result = response.data;
         return {
             status: result.status
@@ -49,7 +50,7 @@ export const handlerGetCategoryAndProduct = async slug => {
             slug: result.data.category.slug
         };
         const _products = result.data.products.edges;
-        
+
         var products = _products.map(item => {
             const product =
             {
@@ -73,7 +74,7 @@ export const handlerGetCategoryAndProduct = async slug => {
 export const getAllData = async () => {
     try {
         const _data = await Promise.all(
-            slugs.map( async slug => {
+            slugs.map(async slug => {
                 const response = await handlerGetCategoryAndProduct(slug);
                 return {
                     category: response.category,

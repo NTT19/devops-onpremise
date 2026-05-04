@@ -166,6 +166,7 @@ const Cart = () => {
                                 //     </tbody>
                                 // </table>
                                 <Table
+                                    rowKey="id"
                                     dataSource={cartItems}
                                     columns={columns}
                                 />

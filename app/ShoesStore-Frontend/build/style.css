@@ -4,3 +4,6 @@
         segoe ui emoji, segoe ui symbol, noto color emoji !important;
     font-size: 14px !important;
 }
+.ant-modal-title{
+    text-align: center;
+}

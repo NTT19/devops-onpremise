@@ -1,5 +1,5 @@
 
-const lineChart = (data) => ( {
+const lineChart = (data) => ({
     series: [
         {
             name: "Tổng tiền",
@@ -13,8 +13,20 @@ const lineChart = (data) => ( {
             width: "100%",
             height: 350,
             type: "area",
+            zoom: {
+                enabled: true
+            },
             toolbar: {
-                show: false,
+                show: true,
+                tools: {
+                    download: true,
+                    selection: true,
+                    zoom: true,
+                    zoomin: true,
+                    zoomout: true,
+                    pan: true,
+                    reset: true
+                }
             },
         },
 

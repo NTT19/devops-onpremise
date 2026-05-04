@@ -38,8 +38,9 @@ const Navbar = ({ user, isSidebarOpen, setIsSidebarOpen }) => {
     const navigate = useNavigate();
 
     const handleLogout = () => {
-        localStorage.clear();
-        window.location = "http://localhost:3000/";
+        localStorage.removeItem("admin_user");
+        localStorage.removeItem("admin_token");
+        window.location.href = "/admin/login";
     };
 
     return (

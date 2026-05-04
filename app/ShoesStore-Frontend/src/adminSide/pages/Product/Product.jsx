@@ -121,7 +121,7 @@ export default function Product() {
             </Row>
 
             <div style={{ height: "78vh", width: "100%", padding: "0px 20px" }}>
-                <Table columns={columns} dataSource={data} />
+                <Table rowKey="id" columns={columns} dataSource={data} />
             </div>
         </>
     );
