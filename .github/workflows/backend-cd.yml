@@ -10,6 +10,7 @@ jobs:
   deploy-backend:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: self-hosted
+    environment: production-backend
 
     steps:
       - name: Deploy backend via kubectl
