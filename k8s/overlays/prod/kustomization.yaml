@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../manifests/deployments/backend-config.yaml
+  - ../../manifests/deployments/backend.yaml
+  - ../../manifests/deployments/frontend.yaml
+  - ../../manifests/services/backend-service.yaml
+  - ../../manifests/services/frontend-service.yaml
+  - ../../manifests/ingresses/app-ingress.yaml
+
+images:
+  - name: ntt1902/shoesstore-backend
+    newTag: latest
+
+  - name: ntt1902/shoesstore-frontend
+    newTag: latest

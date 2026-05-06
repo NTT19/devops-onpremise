@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+data:
+  ASPNETCORE_ENVIRONMENT: "Production"
+  AppSettings__Token: "ld4edPteFlGGZwQVFOdg"
+  ConnectionStrings__dbContext: "Server=192.168.0.113,1433;Database=ShoesShop;User Id=sa;Password=Th@nhtai19022004;TrustServerCertificate=True;Encrypt=False"
