@@ -1,0 +1,22 @@
+name: CD - Deploy Frontend
+
+on:
+  workflow_run:
+    workflows: ["Build frontend ShoesShop"]
+    types:
+      - completed
+
+jobs:
+  deploy-frontend:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: self-hosted
+
+    steps:
+      - name: Deploy frontend via kubectl
+        run: |
+          echo "Deploy frontend image: ${{ github.event.workflow_run.head_sha }}"
+
+          kubectl set image deployment/frontend \
+          frontend=${{ secrets.DOCKERHUB_REPO_FRONTEND }}:${{ github.event.workflow_run.head_sha }}
+
+          kubectl rollout status deployment/frontend || kubectl rollout undo deployment/frontend

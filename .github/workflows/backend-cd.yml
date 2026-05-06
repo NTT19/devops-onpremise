@@ -1,0 +1,22 @@
+name: CD - Deploy Backend
+
+on:
+  workflow_run:
+    workflows: ["Build backend ShoesShop"]
+    types:
+      - completed
+
+jobs:
+  deploy-backend:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: self-hosted
+
+    steps:
+      - name: Deploy backend via kubectl
+        run: |
+          echo "Deploy backend image: ${{ github.event.workflow_run.head_sha }}"
+
+          kubectl set image deployment/backend \
+          backend=${{ secrets.DOCKERHUB_REPO_BACKEND }}:${{ github.event.workflow_run.head_sha }}
+
+          kubectl rollout status deployment/backend || kubectl rollout undo deployment/backend
