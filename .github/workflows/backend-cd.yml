@@ -13,9 +13,14 @@ jobs:
     environment: production-backend
 
     steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v3
+
       - name: Deploy backend via kubectl
         run: |
           echo "Deploy backend image: ${{ github.event.workflow_run.head_sha }}"
+
+          kubectl get deployment backend || kubectl apply -k k8s/overlays/prod/
 
           kubectl set image deployment/backend \
           backend=${{ secrets.DOCKERHUB_REPO_BACKEND }}:${{ github.event.workflow_run.head_sha }}

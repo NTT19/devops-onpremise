@@ -13,9 +13,14 @@ jobs:
     environment: production-frontend
 
     steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v3
+
       - name: Deploy frontend via kubectl
         run: |
           echo "Deploy frontend image: ${{ github.event.workflow_run.head_sha }}"
+
+          kubectl get deployment frontend || kubectl apply -k k8s/overlays/prod/
 
           kubectl set image deployment/frontend \
           frontend=${{ secrets.DOCKERHUB_REPO_FRONTEND }}:${{ github.event.workflow_run.head_sha }}
